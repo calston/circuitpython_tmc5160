@@ -8,7 +8,7 @@ from digitalio import DigitalInOut
 from .tmcreg import *
 
 class TMC5160(object):
-    def __init__(self, clk, mosi, miso, cs, en, sd_mode=None, baud=1000000, max_i=2.2) -> None:
+    def __init__(self, clk, mosi, miso, cs, en, sd_mode=None, baud=1000000, max_i=2.2, standalone=False) -> None:
         tmc_spi = busio.SPI(clk, MOSI=mosi, MISO=miso)
         tmc_cs = DigitalInOut(cs)
         self.tmcdev = SPIDevice(tmc_spi, tmc_cs, baudrate=baud, polarity=0, phase=0)
@@ -24,8 +24,12 @@ class TMC5160(object):
             self.tmc_mode = DigitalInOut(sd_mode)
             self.tmc_mode.switch_to_output()
             self.tmc_mode.value = 0
+
         else:
             self.tmc_mode = None
+
+        # Standalone mode
+        self.standalone = standalone
 
     def write(self, address, *b):
         with self.tmcdev as spi:
@@ -50,7 +54,6 @@ class TMC5160(object):
         value = 0
         for i in range(4):
             value = (value << 8) | result[i+1]
-            
         return value
 
     def setGlobalConfig(self, recalibrate=False, fast_stand_still=0, enable_pwm=False,
@@ -244,7 +247,7 @@ class TMC5160(object):
     def enableStandalone(self):
         if self.tmc_mode is not None:
             self.tmc_mode.value = 1
-    
+
     def reset(self):
         self.tmc_en.value = 0
         time.sleep(0.001)
@@ -266,4 +269,6 @@ class TMC5160(object):
 
         self.setDriverCurrent(hold=0.2, run=1.8)
 
-        self.enableStandalone()
+        if self.standalone:
+            # Re-enable sd_mode standalone
+            self.enableStandalone()
