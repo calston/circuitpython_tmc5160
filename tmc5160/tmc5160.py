@@ -35,7 +35,9 @@ class TMC5160(object):
         with self.tmcdev as spi:
             spi.write(bytes([address | 0x80, b[0], b[1], b[2], b[3]]))
 
-    def writeint(self, address, value):
+    def writeint(self, address, value, signed=False):
+        if signed and value < 0:
+            value = ((-1*value) ^ 0xffffffff) + 1
         self.write(
             address | 0x80,
             0xff & (value >> 24),
@@ -44,21 +46,23 @@ class TMC5160(object):
             0xff & value,
         )
 
-    def readint(self, address):
+    def readint(self, address, signed=False):
         result = bytearray(5)
         with self.tmcdev as spi:
             spi.write(bytes([address, 0, 0, 0, 0]))
             spi.write(bytes([address, 0, 0, 0, 0]))
             spi.readinto(result)
-        print(result)
         value = 0
         for i in range(4):
             value = (value << 8) | result[i+1]
+
+        if signed and (value >> 31) == 1:
+            return -1 * ((0xffffffff ^ value) + 1)
         return value
 
     def setGlobalConfig(self, recalibrate=False, fast_stand_still=0, enable_pwm=False,
-                        multistep_filter=False, invert=False, diag0_error=True,
-                        diag0_over_temp=True, diag0_stall=False, diag1_stall=False,
+                        multistep_filter=False, invert=False, diag0_error=False,
+                        diag0_over_temp=False, diag0_stall=False, diag1_stall=False,
                         diag1_index=False, diag1_chop=False, diag1_step_skip=False,
                         diag0_push_pull=False, diag1_push_pull=False, small_hysteresis=False,
                         stop_enable=False, direct_mode=False, test_mode=False):
@@ -202,7 +206,10 @@ class TMC5160(object):
         self.writeint(RAMPMODE, mode)
 
     def setActualPosition(self, pos):
-        self.writeint(XACTUAL, pos)
+        self.writeint(XACTUAL, pos, signed=True)
+
+    def getActualPosition(self):
+        self.readint(XACTUAL, signed=True)
 
     def setStartVelocity(self, v):
         self.writeint(VSTART, v)
@@ -259,7 +266,6 @@ class TMC5160(object):
 
         self.setGlobalConfig(enable_pwm=True)
         self.setPwmThreshold(500)
-        self.setPwmConfig(pwm_offset=200, pwm_gradient=1, pwm_autoscale=1)
         self.setChopperConfig(off_time=3, hysteresis_start=4, hysteresis_low=1, blank_time=2)
 
         self.setStartVelocity(1)
